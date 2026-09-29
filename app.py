@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import mlflow.pyfunc
+import mlflow
 import pandas as pd
 
 app = FastAPI(title="House Price API")
@@ -16,8 +17,11 @@ class HouseFeatures(BaseModel):
     Latitude: float
     Longitude: float
 
-# โหลดโมเดลเวอร์ชันล่าสุดที่เราพึ่งเทรนเสร็จ
-model = mlflow.pyfunc.load_model("models:/house-price-model/1")
+# ค้นหาโมเดลที่ดีที่สุดอัตโนมัติจาก MLflow โดยไม่ต้องล็อกเวอร์ชัน
+experiment = mlflow.get_experiment_by_name("house_price_prediction")
+runs = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
+best_run_id = runs.loc[runs['metrics.rmse'].idxmin()]['run_id']
+model = mlflow.pyfunc.load_model(f"runs:/{best_run_id}/model")
 
 @app.get("/")
 def home():
@@ -25,6 +29,7 @@ def home():
 
 @app.post("/predict")
 def predict(features: HouseFeatures):
-    data = pd.DataFrame([features.dict()])
+    # ใช้ model_dump() แทน dict() เพื่อแก้ Warning ของ Pydantic V2
+    data = pd.DataFrame([features.model_dump()])
     pred = model.predict(data)
     return {"predicted_price_100k": round(float(pred[0]), 2)}
